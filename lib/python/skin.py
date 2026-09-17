@@ -9,7 +9,7 @@ from enigma import BT_ALPHABLEND, BT_ALPHATEST, BT_HALIGN_CENTER, BT_HALIGN_LEFT
 from Components.config import ConfigEnableDisable, ConfigSelection, ConfigSubsection, ConfigText, config
 from Components.SystemInfo import BoxInfo
 from Components.Sources.Source import ObsoleteSource
-from Tools.Directories import SCOPE_CONFIG, SCOPE_LCDSKIN, SCOPE_GUISKIN, SCOPE_FONTS, SCOPE_SKINS, pathExists, resolveFilename, fileReadLines, fileReadXML
+from Tools.Directories import SCOPE_LCDSKIN, SCOPE_GUISKIN, SCOPE_FONTS, SCOPE_SKINS, pathExists, resolveFilename, fileReadLines, fileReadXML
 from Tools.Import import my_import
 from Tools.LoadPixmap import LoadPixmap
 
@@ -24,7 +24,7 @@ USER_SKIN_TEMPLATE = "skin_user_%s.xml"
 SUBTITLE_SKIN = "skin_subtitles.xml"
 
 GUI_SKIN_ID = 0  # Main frame-buffer.
-DISPLAY_SKIN_ID = 1  # Front panel / display / LCD.
+DISPLAY_SKIN_ID = 2 if BoxInfo.getItem("model").startswith("dm") else 1  # Front panel / display / LCD.
 
 # MANDATORY_WIDGETS AUTOGENERATION
 # START
@@ -98,7 +98,7 @@ runCallbacks = False
 # E.g. "MySkin/skin_display.xml"
 #
 def InitSkins():
-	global currentPrimarySkin, currentDisplaySkin, resolutions
+	global currentPrimarySkin, currentDisplaySkin
 	# #################################################################################################
 	if isfile("/etc/.restore_skins"):
 		unlink("/etc/.restore_skins")
@@ -223,7 +223,6 @@ def loadSkin(filename, scope=SCOPE_SKINS, desktop=getDesktop(GUI_SKIN_ID), scree
 
 
 def reloadSkins():
-	global colors, domScreens, fonts, menus, menuicons, parameters, screens, setups, switchPixmap
 	for styleID in windowStyles:  # Reset window styles so a new skin without its own <windowstyle> doesn't inherit the previous skin's fonts/colors.
 		eWindowStyleManager.getInstance().setStyle(styleID, eWindowStyleSkinned())
 	domScreens.clear()
@@ -248,6 +247,13 @@ def reloadSkins():
 	screens.clear()
 	setups.clear()
 	switchPixmap.clear()
+	windowStyles.clear()
+	scrollLabelStyle.clear()
+	subtitleFonts.clear()
+	constantWidgets.clear()
+	layouts.clear()
+	variables.clear()
+	clearResolveLists()
 	clearFonts()
 	InitSkins()
 
@@ -1356,6 +1362,9 @@ class AttributeParser:
 		pos = parsePosition(pos, self.scaleTuple)
 		self.guiObject.setPointer(1, ptr, pos)
 
+	def hidePointerOnZeroLength(self, value):
+		self.guiObject.setHidePointerOnZeroLength(int(parseBoolean("hidePointerOnZeroLength", value)))
+
 	def selection(self, value):
 		self.guiObject.setSelectionEnable(1 if parseBoolean("selection", value) else 0)
 
@@ -1478,7 +1487,6 @@ def applyAllAttributes(guiObject, desktop, attributes, scale=((1, 1), (1, 1))):
 def loadSingleSkinData(desktop, screenID, domSkin, pathSkin, scope=SCOPE_GUISKIN):
 	"""Loads skin data like colors, windowstyle etc."""
 	assert domSkin.tag == "skin", "root element in skin must be 'skin'!"
-	global colors, fonts, menus, parameters, setups, screens, switchPixmap, resolutions, scrollLabelStyle, subtitleFonts
 	for tag in domSkin.findall("output"):
 		scrnID = parseInteger(tag.attrib.get("id", GUI_SKIN_ID), GUI_SKIN_ID)
 		if scrnID == GUI_SKIN_ID:
@@ -2566,14 +2574,20 @@ def readSkin(screen, skin, names, desktop):
 					if isinstance(element, converterClass) and element.converter_arguments == parms:
 						connection = element
 				if connection is None:
-					connection = converterClass(parms)
+					try:
+						connection = converterClass(parms)
+					except Exception as err:
+						raise SkinError(f"Converter '{converterType}' failed for argument '{parms}': {err}")
 					connection.connect(source)
 				source = connection
 			try:
 				rendererClass = my_import(".".join(("Components", "Renderer", widgetRenderer))).__dict__.get(widgetRenderer)
 			except ImportError:
 				raise SkinError(f"Renderer '{widgetRenderer}' not found")
-			renderer = rendererClass()  # Instantiate renderer.
+			try:
+				renderer = rendererClass()  # Instantiate renderer.
+			except Exception as err:
+				raise SkinError(f"Renderer '{widgetRenderer}' failed to instantiate: {err}")
 			if source:
 				renderer.connect(source)  # Connect to source.
 			renderer.label_name = widgetSource or widgetName  # allows that it can be checked a label exists in the skin
@@ -2682,7 +2696,9 @@ def readSkin(screen, skin, names, desktop):
 			try:
 				processor(widget, context, stack)
 			except SkinError as err:
-				print(f"[Skin] Error: Screen '{myName}' widget '{widget.tag}' {str(err)}!")
+				widgetName = widget.attrib.get("name") or widget.attrib.get("source") or widget.attrib.get("render")
+				widgetDesc = f"'{widget.tag}' '{widgetName}'" if widgetName else f"'{widget.tag}'"
+				print(f"[Skin] Error: Screen '{myName}' widget {widgetDesc} {str(err)}!")
 				print_exc()
 
 	def processPanel(widget, context, stack=None):
