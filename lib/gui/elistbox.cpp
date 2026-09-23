@@ -74,9 +74,6 @@ eListbox::eListbox(eWidget *parent) : eWidget(parent), m_textPixmap(nullptr)
 
 eListbox::~eListbox()
 {
-	if (m_content)
-		m_content->m_listbox = nullptr;
-
 	if (m_scrollbar)
 		delete m_scrollbar;
 
