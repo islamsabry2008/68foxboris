@@ -346,6 +346,7 @@ void eListboxPythonStringContent::paint(gPainter &painter, eWindowStyle &style, 
 		else if (local_style && !local_style->m_background && cursorValid && (local_style->m_gradient_set[0] || radius))
 		{
 			if (local_style->m_gradient_set[0])
+
 			{
 				alphablendtext = local_style->m_gradient_set[0];
 				painter.setGradient(local_style->m_gradient_colors[0], local_style->m_gradient_direction[0], local_style->m_gradient_alphablend[0]);
@@ -930,6 +931,7 @@ void eListboxPythonConfigContent::paint(gPainter &painter, eWindowStyle &style, 
 		else if (local_style && !local_style->m_background && cursorValid && (local_style->m_gradient_set[0] || radius))
 		{
 			if (local_style->m_gradient_set[0])
+
 			{
 				alphablendtext = local_style->m_gradient_set[0];
 				painter.setGradient(local_style->m_gradient_colors[0], local_style->m_gradient_direction[0], local_style->m_gradient_alphablend[0]);
