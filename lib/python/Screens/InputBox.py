@@ -8,7 +8,6 @@ from Components.Label import Label
 from Components.Input import Input
 from Components.Sources.StaticText import StaticText
 from Tools.BoundFunction import boundFunction
-from Tools.Notifications import AddPopup
 from time import time
 
 
@@ -116,16 +115,18 @@ class PinInput(InputBox):
 		if self.getTries() == 0:
 			if (self.triesEntry.time.value + (self.waitTime * 60)) > time():
 				remaining = (self.triesEntry.time.value + (self.waitTime * 60)) - time()
-				messageText = _("You have to wait %(min)d minutes, %(sec)d seconds!") % {"min": int(remaining / 60), "sec": int(remaining % 60)}
+				remainingMinutes = int(remaining / 60)
+				remainingSeconds = int(remaining % 60)
+				messageText = _("You have to wait %s!") % ", ".join((ngettext("%d Minute", "%d Minutes", remainingMinutes) % remainingMinutes, ngettext("%d Second", "%d Seconds", remainingSeconds) % remainingSeconds))
 				if service and simple:
-					AddPopup(messageText, type=MessageBox.TYPE_ERROR, timeout=5)
+					self.session.showError(messageText)
 					self.closePinCancel()
 				else:
 					self.onFirstExecBegin.append(boundFunction(self.session.openWithCallback, self.closePinCancel, MessageBox, messageText, MessageBox.TYPE_ERROR, timeout=5))
 			else:
 				self.setTries(3)
 
-		self["tries"] = Label("")
+		self["tries"] = Label()
 		self.onShown.append(self.showTries)
 
 	def gotAsciiCode(self):

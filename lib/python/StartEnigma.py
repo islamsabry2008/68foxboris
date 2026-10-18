@@ -52,6 +52,7 @@ class Session:
 		self.nav = navigation
 		self.delay_timer = enigma.eTimer()
 		self.delay_timer.callback.append(self.processDelay)
+		self.pendingCallbacks = []
 		self.current_dialog = None
 		self.dialog_stack = []
 		self.summary_stack = []
@@ -85,6 +86,10 @@ class Session:
 			del self.current_dialog.callback
 		self.popCurrent()
 		if callback is not None:
+			self.pendingCallbacks.append((callback, retVal))
+		# A dialog that closed itself on exec begin leaves the session out of exec until its own processDelay.
+		while self.pendingCallbacks and (self.in_exec or self.current_dialog is None):
+			callback, retVal = self.pendingCallbacks.pop(0)
 			callback(*retVal)
 
 	def execBegin(self, first=True, do_show=True):
@@ -236,8 +241,8 @@ class Session:
 			if hasattr(dialog, "desktop"):
 				dialog.reloadSkin()
 
-	def showInfo(self, text, timeout=4):
-		Toast.instance.showToast(text=text, toasttype=Toast.TYPE_INFO, timeout=timeout)
+	def showInfo(self, text, timeout=4, replaceId=None):
+		Toast.instance.showToast(text=text, toasttype=Toast.TYPE_INFO, timeout=timeout, replaceId=replaceId)
 
 	def showWarning(self, text, timeout=5):
 		Toast.instance.showToast(text=text, toasttype=Toast.TYPE_WARNING, timeout=timeout)
@@ -273,6 +278,8 @@ class PowerKey:
 			return 0
 
 	def shutdown(self):
+		if not self.session.in_exec:  # Global keys can arrive while a dialog is closing.
+			return
 		print("[StartEnigma] Power off, now!")
 		if not Screens.Standby.inTryQuitMainloop and self.session.current_dialog and self.session.current_dialog.ALLOW_SUSPEND:
 			self.session.open(Screens.Standby.TryQuitMainloop, 1)  # Shutdown
@@ -381,10 +388,12 @@ def runScreenTest():
 		SymbolsCheck(session)
 	# We need session.scart to access it from within menu.xml.
 	session.scart = AutoScartControl(session)
-
 	enigma.eProfileWrite("Trashcan")
 	import Tools.Trashcan
 	Tools.Trashcan.init(session)
+	enigma.eProfileWrite("VideoModeAutoStart")
+	from Screens.VideoMode import autostart
+	autostart(session)
 	enigma.eProfileWrite("RunReactor")
 	enigma.eProfileDone()
 	from Components.FrontPanelLed import frontPanelLed
@@ -392,7 +401,10 @@ def runScreenTest():
 	ormTimer = enigma.eTimer()  # ORM, started by enigma2.sh, learns that the main loop runs.
 	ormTimer.callback.append(lambda: enigma.eProfileNotify("ready"))
 	ormTimer.start(0, True)
+	from Tools.StartupTasks import startupTasks  # Enigma's timer bindings and the session must exist first.
+	startupTasks.start()
 	runReactor()
+	startupTasks.stop()
 	session.shutdown = True
 	frontPanelLed.shutdown()
 	print("[StartEnigma] Normal shutdown.")
@@ -590,7 +602,7 @@ config.crash.debugSeek = ConfigYesNo(default=False)
 config.crash.debugTeletext = ConfigYesNo(default=False)
 config.crash.debugStorage = ConfigYesNo(default=False)
 config.crash.debugTextEncoding = ConfigYesNo(default=False)
-config.crash.debugNetwork = ConfigYesNo(default=True)
+config.crash.debugNetwork = ConfigYesNo(default=False)
 
 # Enable numbers in Plugin Browser (Do not move it to other file)
 config.misc.menu_show_numbers = ConfigYesNo(default=False)
@@ -720,8 +732,10 @@ from Components.InputDevice import InitInputDevices
 InitInputDevices()
 
 enigma.eProfileWrite("InitAVSwitch")
-from Components.AVSwitch import InitAVSwitch
+from Components.AVSwitch import InitAVSwitch, InitiVideomodeHotplug
 InitAVSwitch()
+InitiVideomodeHotplug()
+print("[TEST] After InitAVSwitch:", hasattr(config.osd, "dst_left"))
 
 enigma.eProfileWrite("InitHDMIRecord")
 from Components.HdmiRecord import InitHdmiRecord
@@ -734,6 +748,7 @@ InitRecordingConfig()
 enigma.eProfileWrite("InitUsageConfig")
 from Components.UsageConfig import InitUsageConfig, DEFAULTKEYMAP
 InitUsageConfig()
+print("[TEST] After InitUsageConfig:", hasattr(config.osd, "dst_left"))
 
 enigma.eProfileWrite("InitPvrDescrambleConvert")
 from Components.PvrDescrambleConvert import pvr_descramble_convert
@@ -812,9 +827,9 @@ try:
 	from Components.ParentalControl import parentalControl
 	parentalControl.save()  # Save parental control settings.
 except Exception:
-	print("Error: Exception in Python StartEnigma startup code:")
-	print("=" * 52)
-	print_exc(file=sys.stdout)
-	print("[StartEnigma] Exiting via quitMainloop #4.")
+	print("Error: Exception in Python StartEnigma startup code:", file=sys.stderr)
+	print("=" * 52, file=sys.stderr)
+	print_exc(file=sys.stderr)  # Keep startup errors visible when debug output is disabled.
+	print("[StartEnigma] Exiting via quitMainloop #4.", file=sys.stderr)
 	enigma.quitMainloop(5)  # QUIT_ERROR_RESTART
-	print("-" * 52)
+	print("-" * 52, file=sys.stderr)

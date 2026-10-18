@@ -52,7 +52,7 @@ class AudioSelection(ConfigListScreen, Screen):
 		self["key_left"] = Pixmap()
 		self["key_right"] = Pixmap()
 		self["switchdescription"] = Label(_("Switch between Audio-, Subtitlepage"))
-		self["summary_description"] = StaticText("")
+		self["summary_description"] = StaticText()
 
 		self.protectContextMenu = True
 
@@ -743,7 +743,7 @@ class QuickSubtitlesConfigMenu(ConfigListScreen, Screen):
 		self.resume = eTimer()
 		self.resume.timeout.get().append(self.resyncSubtitlesResume)
 
-		self["videofps"] = Label("")
+		self["videofps"] = Label()
 
 		sub = self.infobar.selected_subtitle
 		menu = []

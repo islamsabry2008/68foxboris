@@ -12,7 +12,6 @@ from Components.PluginComponent import plugins
 from Components.ServiceEventTracker import ServiceEventTracker
 from Components.Sources.ServiceEvent import ServiceEvent
 from Components.Sources.Boolean import Boolean
-from Components.AVSwitch import iAVSwitch
 from Components.config import config, ConfigBoolean, ConfigClock, ACTIONKEY_RIGHT
 from Components.SystemInfo import BoxInfo, getBoxDisplayName
 from Components.UsageConfig import preferredInstantRecordPath, defaultMoviePath
@@ -39,7 +38,7 @@ from Screens.PictureInPicture import PictureInPicture
 from Screens.PiPSetup import PiPSetup
 from Screens.PVRState import PVRState, TimeshiftState
 from Screens.SubtitleDisplay import SubtitleDisplay
-from Screens.RdsDisplay import DABSlideDisplay, RdsInfoDisplay, RassInteractive
+from Screens.RdsDisplay import DABSlideDisplay, RassInteractive, RdsInfoDisplay, RdsInfoDisplaySummary
 from Screens.TimeDateInput import TimeDateInput
 from Screens.UnhandledKey import UnhandledKey
 from ServiceReference import ServiceReference, getStreamRelayRef, hdmiInServiceRef, isPlayableForCur
@@ -69,6 +68,7 @@ from re import match
 from pickle import load as pickle_load, dump as pickle_dump
 
 from RecordTimer import RecordTimer, RecordTimerEntry, findSafeRecordPath, parseEvent
+from Components.AVSwitch import avSwitch
 
 # hack alert!
 from Screens.Menu import Menu, MenuHorizontal, findMenu, menuDom
@@ -1597,61 +1597,6 @@ class InfoBarEPG:
 		self.session.open(EPGSelection, refstr, eventid=eventid)
 
 
-class InfoBarRdsDecoder:
-	"""provides RDS and Rass support/display"""
-
-	def __init__(self):
-		self["RdsDecoder"] = RdsDecoder(self.session.nav)
-		self.dab_slide_display = self.session.instantiateDialog(DABSlideDisplay)
-		self.dab_slide_display.setAnimationMode(0)
-		self.rds_display = self.session.instantiateDialog(RdsInfoDisplay)
-		self.session.instantiateSummaryDialog(self.rds_display)
-		self.rds_display.setAnimationMode(0)
-		self.dab_slide_display.reserveRadioTextArea(self.rds_display)
-		self.rass_interactive = None
-
-		self.__event_tracker = ServiceEventTracker(screen=self, eventmap={
-				iPlayableService.evEnd: self.__serviceStopped,
-				iPlayableService.evUpdatedRassSlidePic: self.RassSlidePicChanged
-			})
-
-		self["RdsActions"] = ActionMap(["InfobarRdsActions"],
-		{
-			"startRassInteractive": self.startRassInteractive
-		}, -1)
-
-		self["RdsActions"].setEnabled(False)
-
-		self.onLayoutFinish.append(self.rds_display.show)
-		self.rds_display.onRassInteractivePossibilityChanged.append(self.RassInteractivePossibilityChanged)
-
-	def RassInteractivePossibilityChanged(self, state):
-		self["RdsActions"].setEnabled(state)
-
-	def RassSlidePicChanged(self):
-		if not self.rass_interactive:
-			service = self.session.nav.getCurrentService()
-			decoder = service and service.rdsDecoder()
-			if decoder:
-				decoder.showRassSlidePicture()
-
-	def __serviceStopped(self):
-		if self.rass_interactive is not None:
-			rass_interactive = self.rass_interactive
-			self.rass_interactive = None
-			rass_interactive.close()
-
-	def startRassInteractive(self):
-		self.rds_display.hide()
-		self.rass_interactive = self.session.openWithCallback(self.RassInteractiveClosed, RassInteractive)
-
-	def RassInteractiveClosed(self, *val):
-		if self.rass_interactive is not None:
-			self.rass_interactive = None
-			self.RassSlidePicChanged()
-		self.rds_display.show()
-
-
 class SeekBar(Screen):
 	skin = """
 	<screen name="SeekBar" position="center,10" size="800,50" flags="wfNoBorder" resolution="1280,720">
@@ -2661,6 +2606,57 @@ class InfoBarSeek:
 		self.doSeek(0)
 
 
+class InfoBarRdsDecoder:
+	"""provides RDS and Rass support/display"""
+
+	def __init__(self):
+		self["RdsDecoder"] = RdsDecoder(self.session.nav)
+		self.dab_slide_display = self.session.instantiateDialog(DABSlideDisplay)
+		self.dab_slide_display.setAnimationMode(0)
+		self.rds_display = self.session.instantiateDialog(RdsInfoDisplay)
+		self.rds_display.setAnimationMode(0)
+		self.dab_slide_display.reserveRadioTextArea(self.rds_display)
+		self.rds_display.onLayoutFinish.append(self.dab_slide_display.reserveRadioTextArea)
+		self.rass_interactive = None
+		self.__event_tracker = ServiceEventTracker(screen=self, eventmap={
+			iPlayableService.evEnd: self.__serviceStopped,
+			iPlayableService.evUpdatedRassSlidePic: self.RassSlidePicChanged
+		})
+		self["RdsActions"] = HelpableActionMap(self, ["InfobarRdsActions"], {
+			"startRassInteractive": (self.startRassInteractive, _("Start RDS interactive"))
+		}, prio=-1, description=_("RDS Actions"))
+		self["RdsActions"].setEnabled(False)
+		self.onLayoutFinish.append(self.rds_display.updateVisibility)
+		self.rds_display.onRassInteractivePossibilityChanged.append(self.RassInteractivePossibilityChanged)
+
+	def RassInteractivePossibilityChanged(self, state):
+		self["RdsActions"].setEnabled(state)
+
+	def RassSlidePicChanged(self):
+		if not self.rass_interactive:
+			service = self.session.nav.getCurrentService()
+			decoder = service and service.rdsDecoder()
+			if decoder:
+				decoder.showRassSlidePicture()
+
+	def __serviceStopped(self):
+		if self.rass_interactive is not None:
+			rass_interactive = self.rass_interactive
+			self.rass_interactive = None
+			rass_interactive.close()
+
+	def startRassInteractive(self):
+		self.dab_slide_display.rassPictureAvailable()
+		self.rds_display.hide()
+		self.rass_interactive = self.session.openWithCallback(self.RassInteractiveClosed, RassInteractive)
+
+	def RassInteractiveClosed(self, *val):
+		if self.rass_interactive is not None:
+			self.rass_interactive = None
+			self.RassSlidePicChanged()
+		self.rds_display.updateVisibility()
+
+
 class InfoBarPVRState:
 	def __init__(self, screen=PVRState, force_show=False):
 		self.onChangedEntry = []
@@ -3252,7 +3248,7 @@ class InfoBarExtensions:
 		ImportChannels()
 
 	def extManualResolution(self):
-		from Plugins.SystemPlugins.Videomode.plugin import manualResolution
+		from Screens.VideoMode import manualResolution
 		manualResolution(self.session)
 
 	def addExtension(self, extension, key=None, type=EXTENSION_SINGLE):
@@ -4195,9 +4191,8 @@ class InfoBarAspectSelection:
 		else:
 			aspectSwitchList = []
 			if config.av.aspectswitch.enabled.value:
-				from Plugins.SystemPlugins.Videomode.VideoHardware import video_hw
 				for aspect in range(5):
-					aspectSwitchList.append((video_hw.ASPECT_SWITCH_MSG[aspect], str(aspect + 100)))
+					aspectSwitchList.append((avSwitch.ASPECT_SWITCH_MSG[aspect], str(aspect + 100)))
 				aspectSwitchList.append(("--", ""))
 			aspectList = [
 				(_("Resolution"), "resolution"),
@@ -4205,14 +4200,14 @@ class InfoBarAspectSelection:
 			] + aspectSwitchList + [
 				(_("4:3 Letterbox"), "0"),
 				(_("4:3 PanScan"), "1"),
-				(_("16:9"), "2"),
+				("16:9", "2"),
 				(_("16:9 Always"), "3"),
 				(_("16:10 Letterbox"), "4"),
 				(_("16:10 PanScan"), "5"),
 				(_("16:9 Letterbox"), "6")
 			]
 		keys = ["green", "", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-		aspect = iAVSwitch.getAspectRatioSetting()
+		aspect = avSwitch.getAspectRatioSetting()
 		selection = 0
 		for item in range(len(aspectList)):
 			if aspectList[item][1] == aspect:
@@ -4245,7 +4240,7 @@ class InfoBarAspectSelection:
 				elif aspect[1] == "resolution":
 					self.ExGreen_toggleGreen()
 				else:
-					iAVSwitch.setAspectRatio(int(aspect[1]))
+					avSwitch.setAspectRatio(int(aspect[1]))
 					self.ExGreen_doHide()
 		else:
 			self.ExGreen_doHide()
@@ -4267,10 +4262,9 @@ class InfoBarResolutionSelection:
 		resList.append((_("Video") + ": %dx%d@%gHz" % (xRes, yRes, fps), ""))
 		resList.append(("--", ""))
 		# Do we need a new sorting with this way here or should we disable some choices?
-		from Plugins.SystemPlugins.Videomode.VideoHardware import video_hw
-		videoModes = video_hw.readPreferredModes(readOnly=True)
+		videoModes = avSwitch.readPreferredModes(readOnly=True)
 		videoModes = [x.replace("pal ", "").replace("ntsc ", "") for x in videoModes]  # Do we need this?
-		for  videoMode in videoModes:
+		for videoMode in videoModes:
 			video = videoMode
 			if videoMode.endswith("23"):
 				video = "%s.976" % videoMode
@@ -4293,8 +4287,7 @@ class InfoBarResolutionSelection:
 				if videoMode[1] == "exit" or videoMode[1] == "" or videoMode[1] == "auto":
 					self.ExGreen_toggleGreen()
 				if videoMode[1] != "auto":
-					from Plugins.SystemPlugins.Videomode.VideoHardware import video_hw
-					video_hw.setVideoModeDirect(videoMode[1])
+					avSwitch.setVideoModeDirect(videoMode[1])
 					self.ExGreen_doHide()
 		else:
 			self.ExGreen_doHide()
@@ -4661,6 +4654,20 @@ class InfoBarCueSheetSupport:
 
 
 class InfoBarSummary(Screen):
+	def __init__(self, session, parent):
+		Screen.__init__(self, session, parent=parent)
+		self.radioSummary = None
+		if session.summaryDesktop is not None and BoxInfo.getItem("FrontpanelDisplay"):
+			self.radioSummary = session.doInstantiateDialog(RdsInfoDisplaySummary, (self,), {}, session.summaryDesktop)
+			# Follow the normal summary lifecycle, not the TV infobar's hide timer.
+			# RDS updates must never show over menus, movie playback or standby.
+			self.onShow.append(self.radioSummary.updateDisplay)
+			self.onHide.append(self.radioSummary.hide)
+			self.onClose.append(self.closeRadioSummary)
+
+	def closeRadioSummary(self):
+		self.session.deleteDialog(self.radioSummary)
+		self.radioSummary = None
 	skin = """
 	<screen position="0,0" size="132,64">
 		<widget source="global.CurrentTime" render="Label" position="62,46" size="82,18" font="Regular;16" >
@@ -5124,7 +5131,8 @@ class InfoBarHandleBsod:
 			self.bsodLastWarning = False
 
 		self.bsodTimer.start(1000, True)
-		if not Screens.Standby.inStandby and not self.bsodIsShown:
+		isModal = self.session.in_exec or not self.session.dialog_stack  # Same condition as session.open().
+		if not Screens.Standby.inStandby and not self.bsodIsShown and isModal:
 			bsodOccurences = getBsodCounter()
 			if config.crash.bsodpython.value and self.bsodCount < bsodOccurences:
 				bsodMax = int(config.crash.bsodmax.value) or 100
@@ -5147,5 +5155,5 @@ class InfoBarHandleBsod:
 					self.bsodTimer.stop()
 					self.bsodTimer.start(5000, True)
 					bsodTimeoutCallback(False)
-					raise
+					return  # Raising here would be counted as a new crash.
 			self.bsodCount = bsodOccurences

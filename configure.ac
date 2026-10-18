@@ -746,6 +746,7 @@ data/display/vfd255/Makefile
 data/extensions/Makefile
 data/keymaps/Makefile
 data/rc_models/Makefile
+data/icons/Makefile
 data/skin_default/Makefile
 data/skin_default/buttons/Makefile
 data/skin_default/epg/Makefile
@@ -825,8 +826,6 @@ lib/python/Plugins/SystemPlugins/VideoEnhancement/meta/Makefile
 lib/python/Plugins/SystemPlugins/VideoEnhancementAML/Makefile
 lib/python/Plugins/SystemPlugins/VideoTune/Makefile
 lib/python/Plugins/SystemPlugins/VideoTune/meta/Makefile
-lib/python/Plugins/SystemPlugins/Videomode/Makefile
-lib/python/Plugins/SystemPlugins/Videomode/meta/Makefile
 lib/python/Tools/Makefile
 po/Makefile
 main/Makefile

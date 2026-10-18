@@ -149,6 +149,7 @@ public:
 	virtual ~eDVBFrontend();
 
 	int readInputpower();
+	int getCurrentType(){return m_type;}
 	RESULT getFrontendType(int &type);
 	RESULT tune(const iDVBFrontendParameters &where, bool blindscan = false);
 	RESULT prepare_sat(const eDVBFrontendParametersSatellite &, unsigned int timeout);
@@ -190,6 +191,7 @@ public:
 	int openFrontend();
 	int closeFrontend(bool force=false, bool no_delayed=false);
 	const char *getDescription() const { return m_description; }
+	const std::string &getDeviceName() const { return m_filename; }
 	const dvb_frontend_info getFrontendInfo() const { return fe_info; }
 	const dvb_frontend_info getFrontendInfo(fe_delivery_system_t delsys)  { return m_fe_info[delsys]; }
 	bool is_simulate() const { return m_simulate; }
