@@ -28,12 +28,12 @@ class MultiContentTemplateParser(TemplateParser):
 	def readTemplate(self, templateName):
 		def parseIndexColor(color):
 			if self.indexNames and isinstance(color, str) and color[0] == "+":
-				index = self.indexNames.get(color[1:], -1)
-				if index < 0 or index >= len(self.indexNames):
-					print(f"[XmlMultiContent] Error: Index name must resolve to a number between 0 and {len(self.indexNames) - 1} inclusive!")
+				index = self.indexNames.get(color[1:])
+				if index is None:
+					print("[XmlMultiContent] Error: Error: Index name must resolve to a valid color list item number!")
 					color = None
 				else:
-					color = 0xff000000 | index
+					color = 0xFF000000 | index
 			return color
 
 		def parseTemplateModes(template):
@@ -112,16 +112,17 @@ class MultiContentTemplateParser(TemplateParser):
 		def buildModeData(items):
 			modeData = []
 			for item in items:
-				index = item.get("index", "-1")
-				if index.isdigit() or index == "-1":
+				index = item.get("index")
+				if index.isdigit() or index.startswith(("-", "+")) and index[1:].isdigit():
 					index = int(index)
 				elif self.indexNames:
-					index = self.indexNames.get(index, -1)
-					if index < 0 or index >= len(self.indexNames):
-						print(f"[XmlMultiContent] Error: Index name must resolve to a number between 0 and {len(self.indexNames) - 1} inclusive!")
+					index = self.indexNames.get(index)
+					if index is None:
+						index = -1
+						print("[XmlMultiContent] Error: Index name must resolve to a valid list item number!")
 				else:
 					index = -1
-					print("[XmlMultiContent] Error: Index must be a list item number!")
+					print("[XmlMultiContent] Error: Index must be a list item number or valid index name!")
 				pos = item.get("position")
 				size = item.get("size")
 				backgroundColor = parseIndexColor(item.get("backgroundColor"))
@@ -305,7 +306,7 @@ class XmlMultiContent(StringList, MultiContentTemplateParser):
 				for item in range(len(sourceList)):
 					contentList.append((sourceList[item],) if not isinstance(sourceList[item], (list, tuple)) else sourceList[item])
 			except Exception as error:
-				print(f"[XmlMultiContent] Error: {error}!")
+				print("[XmlMultiContent] Error: {error}!")
 				contentList = self.source.list
 			self.content.setList(contentList)
 		setTemplate()
