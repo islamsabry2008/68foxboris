@@ -303,6 +303,15 @@ if test x"$withtextlcd" != xno ; then
 fi
 AM_CONDITIONAL(HAVE_TEXTLCD, test x"$withtextlcd" != xno)
 
+AC_ARG_WITH(egl,
+	AC_HELP_STRING([--with-egl], [passed by the e2egl machine feature: render skins larger than 1920x1080 (WQHD/4K) in gFBDC and scale them down, yes or no]),
+	[[withegl=$withval]],
+	[[withegl=no]]
+)
+if test x"$withegl" != xno ; then
+	AC_DEFINE(HAVE_FBWQHD, 1,[Define to enable scaled WQHD/4K skins in gFBDC])
+fi
+
 AC_ARG_WITH(7segment,
 	AS_HELP_STRING([--with-7segment], [use ascii based lcd, yes or no]),
 	[[with7segment=$withval]],
@@ -816,8 +825,6 @@ lib/python/Plugins/SystemPlugins/PositionerSetup/meta/Makefile
 lib/python/Plugins/SystemPlugins/SatelliteEquipmentControl/Makefile
 lib/python/Plugins/SystemPlugins/Satfinder/Makefile
 lib/python/Plugins/SystemPlugins/Satfinder/meta/Makefile
-lib/python/Plugins/SystemPlugins/SoftwareManager/Makefile
-lib/python/Plugins/SystemPlugins/SoftwareManager/meta/Makefile
 lib/python/Plugins/SystemPlugins/TempFanControl/Makefile
 lib/python/Plugins/SystemPlugins/TempFanControl/meta/Makefile
 lib/python/Plugins/SystemPlugins/VideoClippingSetup/Makefile
