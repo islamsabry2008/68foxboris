@@ -395,6 +395,7 @@ class InfoBarShowHide(InfoBarScreenSaver):
 	FLAG_CENTER_DVB_SUBS = 2048
 
 	def __init__(self):
+		self.animationProfile = "infobar" if isStandardInfoBar(self) else "mediaInfobar"
 		self["ShowHideActions"] = ActionMap(["InfobarShowHideActions"],
 			{
 				"toggleShow": self.okButtonCheck,
@@ -601,6 +602,12 @@ class InfoBarShowHide(InfoBarScreenSaver):
 
 	def doTimerHide(self):
 		self.hideTimer.stop()
+		if getattr(self, "infoBarGlesAnimation", False) and self.__state != self.STATE_HIDDEN:
+			# GLES fades this window only; do not also dim the entire OSD plane.
+			self.DimmingTimer.stop()
+			self.skipToggleShow = False
+			self.hide()
+			return
 		self.DimmingTimer.start(300, True)
 		self.dimmed = config.usage.show_infobar_dimming_speed.value
 
@@ -4822,19 +4829,29 @@ class InfoBarSubtitleSupport:
 
 		self.selected_subtitle = None
 
-		if isStandardInfoBar(self):
-			self.subtitle_window = self.session.instantiateDialog(SubtitleDisplay)
-			self.subtitle_window.setAnimationMode(0)
-		else:
-			from Screens.InfoBar import InfoBar
-			self.subtitle_window = InfoBar.instance.subtitle_window
-
-		self.subtitle_window.hide()
+		self.subtitle_window = self.getSharedSubtitleWindow()
+		if self.subtitle_window is not None:
+			self.subtitle_window.hide()
 		self.__event_tracker = ServiceEventTracker(screen=self, eventmap={
 				iPlayableService.evStart: self.__serviceChanged,
 				iPlayableService.evEnd: self.__serviceChanged,
 				iPlayableService.evUpdatedInfo: self.__updatedInfo
 			})
+
+	def getSharedSubtitleWindow(self):
+		if isStandardInfoBar(self):
+			owner = self
+		else:
+			from Screens.InfoBar import InfoBar  # InfoBar imports this mixin.
+			owner = InfoBar.instance
+		if getattr(owner, "session", None) is not self.session or self.session.shutdown:
+			return None
+		window = getattr(owner, "subtitle_window", None)
+		if getattr(window, "instance", None) is None:
+			window = self.session.instantiateDialog(SubtitleDisplay)
+			window.setAnimationMode(0)
+			owner.subtitle_window = window
+		return window
 
 	def getCurrentServiceSubtitle(self):
 		service = self.session.nav.getCurrentService()
@@ -4875,7 +4892,8 @@ class InfoBarSubtitleSupport:
 	def __serviceChanged(self):
 		if self.selected_subtitle:
 			self.selected_subtitle = None
-			self.subtitle_window.hide()
+			if getattr(self.subtitle_window, "instance", None) is not None:
+				self.subtitle_window.hide()
 
 	def __updatedInfo(self):
 		if not self.selected_subtitle:
@@ -4887,14 +4905,20 @@ class InfoBarSubtitleSupport:
 
 	def enableSubtitle(self, selectedSubtitle):
 		subtitle = self.getCurrentServiceSubtitle()
+		if subtitle and selectedSubtitle and getattr(self.subtitle_window, "instance", None) is None:
+			self.subtitle_window = self.getSharedSubtitleWindow()
+		windowInstance = getattr(self.subtitle_window, "instance", None)
+		if windowInstance is None:
+			self.selected_subtitle = None
+			return
 		self.selected_subtitle = selectedSubtitle
 		if subtitle and self.selected_subtitle:
-			subtitle.enableSubtitles(self.subtitle_window.instance, self.selected_subtitle)
+			subtitle.enableSubtitles(windowInstance, self.selected_subtitle)
 			self.showSubtitles()
 			self.doCenterDVBSubs()
 		else:
 			if subtitle:
-				subtitle.disableSubtitles(self.subtitle_window.instance)
+				subtitle.disableSubtitles(windowInstance)
 			self.subtitle_window.hide()
 
 	def restartSubtitle(self):
