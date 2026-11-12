@@ -76,7 +76,7 @@ DABAudioMode dabAudioMode()
 
 bool defaultDABPCMCompatibility()
 {
-#if defined(HWDM7435) || defined(HWDM7252S) || defined(HWOSMIO4K) || defined(HWOSMIO4KPLUS) || defined(HWSF4008)
+#if defined(HWDM7080) || defined(HWDM820) || defined(HWDM900) || defined(HWDM920) || defined(HWOSMIO4K) || defined(HWOSMIO4KPLUS) || defined(HWSF4008)
 	return true;
 #else
 	return false;
@@ -569,6 +569,10 @@ void eDABWorker::updateDecoderStats()
 	m_stats.dlPlusProgrammeHost[sizeof(m_stats.dlPlusProgrammeHost) - 1] = 0;
 	if (m_stats.serviceRevision != m_decoder->serviceRevision())
 	{
+		// These fields change with the FIC; reuse the existing metadata update.
+		m_stats.subchannelId = m_decoder->subchannelId();
+		m_stats.capacityUnitStart = m_decoder->capacityUnitStart();
+		m_stats.capacityUnitSize = m_decoder->capacityUnitSize();
 		m_publish_pending = true;  // A scan waits for this to stop changing.
 		const std::vector<eDABDecoder::ServiceInfo> services = m_decoder->serviceList();
 		m_stats.serviceRevision = m_decoder->serviceRevision();
@@ -764,6 +768,15 @@ private:
 				value += character;
 		}
 		return std::string();
+	}
+
+	static int jsonInteger(const std::string &line, const char *key, int maximum)
+	{
+		const std::string text = jsonValue(line, key);
+		if (text.empty() || text.size() > 3 || text.find_first_not_of("0123456789") != std::string::npos)
+			return -1;
+		const int value = atoi(text.c_str());
+		return value <= maximum ? value : -1;
 	}
 
 	void thread() override
@@ -1279,6 +1292,9 @@ private:
 			}
 			return;
 		}
+		const std::string selectedService = jsonValue(line, "serviceId");
+		if (!selectedService.empty() && selectedService != std::to_string(m_service_id))
+			return;
 		const std::string bitrate = jsonValue(line, "bitrate");
 		// Numeric FIG metadata is separate from legacy programType/genre text.
 		// Empty/malformed values mean unavailable, never PTY zero.
@@ -1286,14 +1302,8 @@ private:
 		const std::string ptyTable = jsonValue(line, "ptyTable");
 		if (!pty.empty() || !ptyTable.empty())
 		{
-			auto parseCode = [](const std::string &text, int maximum) {
-				if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos || text.size() > 3)
-					return -1;
-				const int value = atoi(text.c_str());
-				return value <= maximum ? value : -1;
-			};
-			m_stats.programmeType = parseCode(pty, 31);
-			m_stats.programmeTypeTable = parseCode(ptyTable, 255);
+			m_stats.programmeType = jsonInteger(line, "pty", 31);
+			m_stats.programmeTypeTable = jsonInteger(line, "ptyTable", 255);
 			m_publish_pending = true;
 		}
 		const std::string dabType = jsonValue(line, "dabType");
@@ -1305,6 +1315,15 @@ private:
 			m_stats.bitrate = atoi(bitrate.c_str());
 			m_stats.dabplus = dabType == "DAB+";
 			m_stats.serviceFound = true;
+			m_stats.subchannelId = jsonInteger(line, "subchannelId", 63);
+			m_stats.capacityUnitStart = jsonInteger(line, "capacityUnitStart", 863);
+			m_stats.capacityUnitSize = jsonInteger(line, "capacityUnitSize", 864);
+			if (m_stats.capacityUnitStart < 0 || m_stats.capacityUnitSize <= 0 ||
+				m_stats.capacityUnitStart + m_stats.capacityUnitSize > 864)
+			{
+				m_stats.capacityUnitStart = -1;
+				m_stats.capacityUnitSize = -1;
+			}
 			snprintf(m_stats.language, sizeof(m_stats.language), "%s", language.c_str());
 			snprintf(m_stats.programType, sizeof(m_stats.programType), "%s", programType.c_str());
 			snprintf(m_stats.protection, sizeof(m_stats.protection), "%s", protection.c_str());
@@ -2723,6 +2742,9 @@ void eServiceDAB::workerMessage(const eDABWorkerStats &stats)
 	const bool epgChanged = m_stats.spiRevision != stats.spiRevision;
 	const bool logoChanged = m_stats.logoRevision != stats.logoRevision;
 	const bool radioMetaChanged = m_stats.serviceFound != stats.serviceFound ||
+		m_stats.subchannelId != stats.subchannelId ||
+		m_stats.capacityUnitStart != stats.capacityUnitStart ||
+		m_stats.capacityUnitSize != stats.capacityUnitSize ||
 		m_stats.audioFormat != stats.audioFormat ||
 		m_stats.dabplus != stats.dabplus || m_stats.bitrate != stats.bitrate ||
 		strcmp(m_stats.serviceLabel, stats.serviceLabel) != 0 ||
@@ -3757,6 +3779,12 @@ int eServiceDAB::getInfo(int w)
 		return m_stats.programmeTypeTable;
 	case sDABSampleRate:
 		return m_stats.audioFormat.sampleRate ? static_cast<int>(m_stats.audioFormat.sampleRate) : resNA;
+	case sDABSubChId:
+		return m_stats.subchannelId;
+	case sDABCuStart:
+		return m_stats.capacityUnitStart;
+	case sDABCuSize:
+		return m_stats.capacityUnitSize > 0 ? m_stats.capacityUnitSize : resNA;
 	case sTransferBPS:
 		return static_cast<int>(std::min<uint64_t>(m_transfer_bps, std::numeric_limits<int>::max()));
 	case sProvider:
