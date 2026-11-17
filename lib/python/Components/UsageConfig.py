@@ -402,6 +402,7 @@ def InitUsageConfig():
 	config.usage.oldstyle_channel_select_controls = ConfigYesNo(default=False)
 	config.usage.zap_with_ch_buttons = ConfigYesNo(default=False)
 	config.usage.ok_is_channelselection = ConfigYesNo(default=False)
+	config.usage.long_ok_to_toggle_alternative_screens = ConfigYesNo(default=True)
 	config.usage.changebouquet_set_history = ConfigYesNo(default=False)
 	config.usage.volume_instead_of_channelselection = ConfigYesNo(default=False)
 	config.usage.channelselection_preview = ConfigYesNo(default=False)
@@ -790,8 +791,6 @@ def InitUsageConfig():
 	config.usage.http_startdelay.addNotifier(setHttpStartDelay)
 
 	config.usage.show_timer_conflict_warning = ConfigYesNo(default=True)
-
-	config.usage.alternateGitHubDNS = ConfigYesNo(default=False)
 
 	preferredTunerChoicesUpdate()
 
